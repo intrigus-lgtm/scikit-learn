@@ -940,8 +940,13 @@ def check_array(
         if isinstance(array.dtype, np.dtype):
             dtype_orig = array.dtype
         else:
-            # Set to None to let array.astype work out the best dtype
-            dtype_orig = None
+            # Try to get the equivalent numpy dtype from extension arrays
+            numpy_dtype = getattr(array.dtype, "numpy_dtype", None)
+            if numpy_dtype is not None:
+                dtype_orig = np.dtype(numpy_dtype)
+            else:
+                # Set to None to let array.astype work out the best dtype
+                dtype_orig = None
 
     if dtype_numeric:
         if (
@@ -968,6 +973,13 @@ def check_array(
         # nans
         # Use the original dtype for conversion if dtype is None
         new_dtype = dtype_orig if dtype is None else dtype
+        
+        # If new_dtype is still None but we have an integer extension array, 
+        # use the equivalent numpy dtype to preserve the integer type
+        if (new_dtype is None and hasattr(array, "dtype") and 
+            hasattr(array.dtype, "numpy_dtype")):
+            new_dtype = np.dtype(array.dtype.numpy_dtype)
+            
         array = array.astype(new_dtype)
         # Since we converted here, we do not need to convert again later
         dtype = None
