@@ -363,8 +363,19 @@ class SimpleImputer(_BaseImputer):
                 raise ve
 
         if in_fit:
+            # For PyArrow extension arrays with integer dtypes, we need to preserve
+            # the original integer dtype to avoid type mismatches later
+            original_dtype = None
+            if hasattr(X, "dtypes") and hasattr(X.dtypes, "__array__"):
+                # Handle DataFrame case - check if any column has PyArrow extension array
+                for col_dtype in X.dtypes:
+                    if (hasattr(col_dtype, "numpy_dtype") and 
+                        np.issubdtype(np.dtype(col_dtype.numpy_dtype), np.integer)):
+                        original_dtype = np.dtype(col_dtype.numpy_dtype)
+                        break
+            
             # Use the dtype seen in `fit` for non-`fit` conversion
-            self._fit_dtype = X.dtype
+            self._fit_dtype = original_dtype if original_dtype is not None else X.dtype
 
         _check_inputs_dtype(X, self.missing_values)
         if X.dtype.kind not in ("i", "u", "f", "O"):
@@ -453,6 +464,11 @@ class SimpleImputer(_BaseImputer):
             self.statistics_ = self._dense_fit(
                 X, self.strategy, self.missing_values, fill_value
             )
+            
+        # Ensure statistics_ has the same dtype as _fit_dtype for consistency
+        # This handles PyArrow extension arrays properly
+        if hasattr(self, "_fit_dtype") and self._fit_dtype.kind != "O":
+            self.statistics_ = self.statistics_.astype(self._fit_dtype)
 
         return self
 
